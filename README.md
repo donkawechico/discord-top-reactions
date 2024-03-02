@@ -32,7 +32,7 @@ This guide will walk you through the process of installing and setting up the To
     ```
 3. **Run the Bot Container**: Use the following command to run your bot:
    ```bash
-   docker run --env-file .env --restart unless-stopped top-reactions-bot
+   docker run -d --env-file .env --restart unless-stopped top-reactions-bot
    ```
    The `--restart unless-stopped` option ensures that the Docker container will automatically restart if it crashes or if the server is rebooted.
 
