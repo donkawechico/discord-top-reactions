@@ -5,6 +5,10 @@ from discord.ext import commands
 from discord.interactions import Interaction
 from util.embed_utils import EmbedUtils, MAX_EMBEDS_PER_MESSAGE, MAX_EMBED_DESCRIPTION_LENGTH
 from util.reaction_processor import ReactionProcessor
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
 
 class FetchReactionsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -27,9 +31,13 @@ class FetchReactionsCog(commands.Cog):
         return summary_str
 
     @app_commands.command(name="top")
-    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = 100, show: int = 5):
+    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5):
         """Fetch top reaction posts in a channel."""
+        # Show message in docker logs
+        logger.info(f"Fetching top {show} from {limit} messages in {interaction.channel.name}")
+
         channel = interaction.channel
+        
         history = [msg async for msg in channel.history(limit=limit)]
         top_posts = sorted(history, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
 
