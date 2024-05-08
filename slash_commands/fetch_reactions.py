@@ -32,33 +32,37 @@ class FetchReactionsCog(commands.Cog):
 
     @app_commands.command(name="top")
     async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5):
-        """Fetch top reaction posts in a channel."""
-        # Show message in docker logs
         logger.info(f"Fetching top {show} from {limit} messages in {interaction.channel.name}")
 
         channel = interaction.channel
-        
-        history = [msg async for msg in channel.history(limit=limit)]
-        top_posts = sorted(history, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
+        try:
+            # Use cached messages if available
+            messages = self.bot.channel_messages.get(channel.id, [])
+            if limit:
+                messages = messages[:limit]
+            top_posts = sorted(messages, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
 
-        embeds, total_embed_length = [], 0
-        for msg in top_posts[:MAX_EMBEDS_PER_MESSAGE - 1]:  # Reserve one spot for summary if needed
-            reactions_str = ReactionProcessor.process_reactions(msg)
-            content_str = f"{msg.content}\n{reactions_str}\n**[[JUMP]({msg.jump_url})]**"
-            embed = EmbedUtils.create_embed(content_str, msg.attachments)
+            embeds, total_embed_length = [], 0
+            for msg in top_posts[:MAX_EMBEDS_PER_MESSAGE - 1]:  # Reserve one spot for summary if needed
+                reactions_str = ReactionProcessor.process_reactions(msg)
+                content_str = f"{msg.content}\n{reactions_str}\n**[[JUMP]({msg.jump_url})]**"
+                embed = EmbedUtils.create_embed(content_str, msg.attachments)
 
-            if not EmbedUtils.add_embed(embeds, embed, total_embed_length):
-                break  # Stop if adding another embed would exceed the total length limit
-            total_embed_length += len(embed.description)
+                if not EmbedUtils.add_embed(embeds, embed, total_embed_length):
+                    break  # Stop if adding another embed would exceed the total length limit
+                total_embed_length += len(embed.description)
 
-        # Add a summary embed if there are messages left
-        if len(top_posts) > len(embeds):
-            remaining_messages = top_posts[len(embeds):]
-            summary_str = FetchReactionsCog.summarize_messages(remaining_messages)
-            summary_embed = EmbedUtils.create_embed(summary_str)
-            EmbedUtils.add_embed(embeds, summary_embed, total_embed_length)
+            if len(top_posts) > len(embeds):
+                remaining_messages = top_posts[len(embeds):]
+                summary_str = FetchReactionsCog.summarize_messages(remaining_messages)
+                summary_embed = EmbedUtils.create_embed(summary_str)
+                EmbedUtils.add_embed(embeds, summary_embed, total_embed_length)
 
-        await interaction.response.send_message(embeds=embeds, ephemeral=True)
+            await interaction.response.send_message(embeds=embeds, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to process top reactions: {e}")
+            await interaction.response.send_message("Failed to process your request.", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(FetchReactionsCog(bot=bot))
