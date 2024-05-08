@@ -50,7 +50,6 @@ def log_warning(message, pretty=False):
     _check_and_trim_log()
 
 def log_debug(message, pretty=False):
-    # pdb.set_trace()
     message = prettify(message, pretty)
     logger.debug(message)
     _print(message)
