@@ -44,6 +44,7 @@ class FetchReactionsCog(commands.Cog):
 
         # Check if messages need to be fetched or are already cached
         if channel.id not in self.bot.channel_messages or self.bot.channel_messages[channel.id] is None:
+            logger.info(f"No messages cached for {channel.name}, fetching now...")
             initial_message = await interaction.followup.send("Please wait for a (one-time) fetch and cache of this channel's messages... This can take up to a minute for some channels. This message will update with results once complete. If message never updates, please try again later.", ephemeral=True)  
             message_count = await self.fetch_messages(channel)
             if message_count == 0:
