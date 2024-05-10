@@ -56,7 +56,14 @@ class FetchReactionsCog(commands.Cog):
             messages = messages[:limit]
 
         top_posts = sorted(messages, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
-        embeds = [EmbedUtils.create_embed(f"{msg.content}\nReactions: {ReactionProcessor.process_reactions(msg)}", msg.attachments) for msg in top_posts]
+
+        embeds = [
+            EmbedUtils.create_embed(
+                f"{msg.content}\n{ReactionProcessor.process_reactions(msg)}\n**[[JUMP]({msg.jump_url})]**",
+                msg.attachments
+            ) for msg in top_posts
+        ]
+
 
         if initial_message:
             await initial_message.edit(content="", embeds=embeds)
