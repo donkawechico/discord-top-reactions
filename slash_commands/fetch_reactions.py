@@ -10,43 +10,57 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
+MAX_MESSAGES = 5000
+
 class FetchReactionsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def fetch_messages(self, channel):
-        """Fetch messages for a given channel and store them."""
+    async def fetch_messages(self, channel, interaction=None, initial_message=None):
+        """Fetch messages for a given channel and store them with progress logging and optional interaction updates every 10 messages."""
         if channel.id not in self.bot.channel_messages or self.bot.channel_messages[channel.id] is None:
             self.bot.channel_messages[channel.id] = []  # Initialize as empty to indicate fetch in progress
+            message_count = 0
+            total_messages_fetched = 0
             try:
-                messages = [msg async for msg in channel.history(limit=5000)]
-                self.bot.channel_messages[channel.id] = messages
-                logger.info(f"Fetched and cached {len(messages)} messages for {channel.name} (ID: {channel.id})")
+                # Create an asynchronous iterator to fetch messages
+                async for msg in channel.history(limit=MAX_MESSAGES):
+                    self.bot.channel_messages[channel.id].append(msg)
+                    message_count += 1
+                    total_messages_fetched += 1
+                    if message_count % 50 == 0:  # Log and optionally update every 10 messages
+                        logger.info(f"Fetched {total_messages_fetched} messages so far for {channel.name} (ID: {channel.id})")
+                        if interaction and initial_message:
+                            await initial_message.edit(content=self.get_progress(total_messages_fetched))
+                        
+                logger.info(f"Completed fetching and cached {total_messages_fetched} messages for {channel.name} (ID: {channel.id})")
             except discord.errors.Forbidden:
                 logger.warning(f"Skipping channel {channel.name} due to lack of permissions")
                 self.bot.channel_messages[channel.id] = None
             except Exception as e:
                 logger.error(f"Error fetching messages for {channel.name}: {e}")
                 self.bot.channel_messages[channel.id] = None
-            return len(messages if self.bot.channel_messages[channel.id] is not None else [])
-        return 0
+
+            return total_messages_fetched  # Return the count of messages fetched
+        return 0  # Return zero if messages were already fetched
+
+
+    def get_progress(self, total_messages_fetched):
+        """Return a progress string based on the number of messages fetched."""
+        return f"Performing one-time history cache. Results will appear here when complete... {total_messages_fetched} messages fetched out of max {MAX_MESSAGES}"
 
     @app_commands.command(name="top")
-    @app_commands.describe(limit="The most recent N messages to consider.",
-                           show="The number of top messages to display.")
+    @app_commands.describe(limit="The most recent N messages to consider.", show="The number of top messages to display.")
     async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5):
         """Fetch top reaction posts in a channel."""
-        logger.info(f"Fetching top {show} from {limit} messages in {interaction.channel.name}")
         channel = interaction.channel
-
         await interaction.response.defer(ephemeral=True)
-        initial_message = None
+        
+        initial_message = await interaction.followup.send(self.get_progress(0))
 
-        # Check if messages need to be fetched or are already cached
         if channel.id not in self.bot.channel_messages or self.bot.channel_messages[channel.id] is None:
             logger.info(f"No messages cached for {channel.name}, fetching now...")
-            initial_message = await interaction.followup.send("Please wait for a (one-time) fetch and cache of this channel's messages... This can take up to a minute for some channels. This message will update with results once complete. If message never updates, please try again later.", ephemeral=True)  
-            message_count = await self.fetch_messages(channel)
+            message_count = await self.fetch_messages(channel, interaction, initial_message)
             if message_count == 0:
                 await initial_message.edit(content="Unable to fetch messages for this channel.")
                 return
