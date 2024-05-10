@@ -1,9 +1,9 @@
 import pdb
+from typing import Literal, Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.interactions import Interaction
-from util.embed_utils import EmbedUtils, MAX_EMBEDS_PER_MESSAGE, MAX_EMBED_DESCRIPTION_LENGTH
+from util.embed_utils import EmbedUtils
 from util.reaction_processor import ReactionProcessor
 import logging
 

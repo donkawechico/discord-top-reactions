@@ -1,9 +1,11 @@
 import pdb
 import os
+from typing import Literal, Optional
 import discord
 from dotenv import load_dotenv
 from discord.ext import commands
 import logging
+from slash_commands.admin import sync
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -29,23 +31,15 @@ class TopReactionsBot(commands.Bot):
         # initialize our bot instance, make sure to pass your intents!
         # for this example, we'll just have everything enabled
         super().__init__(
-            command_prefix="/",
+            command_prefix="!",
             intents=intents
         )
 
         self.channel_messages = {}
 
-    async def on_ready(self):
-        self.tree.copy_global_to(guild=GUILD)
-        await self.tree.sync(guild=GUILD)
-
-        print("Ready!")
-        print(f"Logged in as {self.user} ({self.user.id})")
-        print("------")
-        logger.info("Bot is ready and waiting for commands.")
-
     async def setup_hook(self):
         await self.load_extension("slash_commands.fetch_reactions")
+
         logger.info("Loaded extensions and cogs.")
 
     async def get_all_channels(self):
@@ -114,8 +108,8 @@ class TopReactionsBot(commands.Bot):
         
         logger.info(f"New message {message.id} in channel {message.channel.id}")
         await self.update_cache(message)
+        await self.process_commands(message)
         
-        # Handles message editing
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
         if payload.cached_message:
             if payload.cached_message.author == self.user:
@@ -124,18 +118,27 @@ class TopReactionsBot(commands.Bot):
         logger.info(f"Message edit event in {payload.channel_id}")
         await self.update_cache_raw_message(payload)
 
-    # Handles reaction addition
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         logger.info(f"Reaction add event in {payload.channel_id}")
         await self.update_cache_reaction(payload)
 
-    # Handles reaction removal
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
         logger.info(f"Reaction remove event in {payload.channel_id}")
         await self.update_cache_reaction(payload)
 
+    async def on_ready(self):
+        # Don't sync commands every time the bot restarts
+        # Uncomment this block (once) to sync commands then comment it out again
+        #
+        # self.tree.copy_global_to(guild=GUILD)
+        # await self.tree.sync(guild=GUILD)
+        
+        print("Ready!")
+        print(f"Logged in as {self.user} ({self.user.id})")
+        print("------")
+        logger.info("Bot is ready and waiting for commands.")
 
-    
 bot = TopReactionsBot()
+bot.add_command(sync)
 
 bot.run(os.getenv('DISCORD_TOKEN'))
