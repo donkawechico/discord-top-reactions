@@ -61,28 +61,37 @@ class FetchReactionsCog(commands.Cog):
         return f"Performing one-time history cache. Results will appear here when complete... {total_messages_fetched} messages fetched out of max {MAX_MESSAGES}"
 
     @app_commands.command(name="top")
-    @app_commands.describe(limit="The most recent N messages to consider.", show="The number of top messages to display.")
-    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5):
+    @app_commands.describe(
+        limit="The most recent N messages to consider.",
+        show="The number of top messages to display.",
+        scored="Rank by weighted score (positive minus negative reactions) instead of total reactions.",
+    )
+    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5, scored: bool = False):
         """Fetch top reaction posts in a channel."""
         # Show message in docker logs
         logger.info(f"Fetching top {show} from {limit} messages in {interaction.channel.name}")
 
         channel = interaction.channel
         await interaction.response.defer(ephemeral=True)
-        
-        initial_message = await interaction.followup.send(self.get_progress(0))
 
         if channel.id not in self.bot.channel_messages or self.bot.channel_messages[channel.id] is None:
+            initial_message = await interaction.followup.send(self.get_progress(0))
             message_count = await self.fetch_messages(channel, interaction, initial_message)
             if message_count == 0:
                 await initial_message.edit(content="Unable to fetch messages for this channel.")
                 return
+        else:
+            initial_message = await interaction.followup.send("Fetching top posts...")
 
         messages = self.bot.channel_messages.get(channel.id, [])
         if limit:
             messages = messages[:limit]
 
-        top_posts = sorted(messages, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
+        score_fn = ReactionProcessor.calculate_score if scored else lambda msg: sum(r.count for r in msg.reactions)
+        scored_messages = [(msg, score_fn(msg)) for msg in messages]
+        if scored:
+            scored_messages = [(msg, score) for msg, score in scored_messages if score > 0]
+        top_posts = [msg for msg, _ in sorted(scored_messages, key=lambda x: x[1], reverse=True)[:show]]
         
         embeds, total_embed_length = [], 0
         for msg in top_posts[:MAX_EMBEDS_PER_MESSAGE - 1]:  # Reserve one spot for summary if needed
