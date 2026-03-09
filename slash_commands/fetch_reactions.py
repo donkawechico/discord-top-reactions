@@ -61,28 +61,61 @@ class FetchReactionsCog(commands.Cog):
         return f"Performing one-time history cache. Results will appear here when complete... {total_messages_fetched} messages fetched out of max {MAX_MESSAGES}"
 
     @app_commands.command(name="top")
-    @app_commands.describe(limit="The most recent N messages to consider.", show="The number of top messages to display.")
-    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5):
+    @app_commands.describe(
+        limit="The most recent N messages to consider.",
+        show="The number of top messages to display.",
+        scored="Rank by weighted score (positive minus negative reactions) instead of total reactions.",
+        include="Space-separated emojis: only show messages that have at least one of these.",
+        exclude="Space-separated emojis: hide messages that have any of these.",
+        only="Space-separated emojis: only count these emojis toward the score.",
+        has_media="Only show messages that contain an attachment or link.",
+    )
+    async def get_top_reaction_posts(self, interaction: discord.Interaction, limit: int = None, show: int = 5, scored: bool = False, include: str = None, exclude: str = None, only: str = None, has_media: bool = False):
         """Fetch top reaction posts in a channel."""
         # Show message in docker logs
         logger.info(f"Fetching top {show} from {limit} messages in {interaction.channel.name}")
 
         channel = interaction.channel
         await interaction.response.defer(ephemeral=True)
-        
-        initial_message = await interaction.followup.send(self.get_progress(0))
 
         if channel.id not in self.bot.channel_messages or self.bot.channel_messages[channel.id] is None:
+            initial_message = await interaction.followup.send(self.get_progress(0))
             message_count = await self.fetch_messages(channel, interaction, initial_message)
             if message_count == 0:
                 await initial_message.edit(content="Unable to fetch messages for this channel.")
                 return
+        else:
+            initial_message = await interaction.followup.send("Fetching top posts...")
 
         messages = self.bot.channel_messages.get(channel.id, [])
         if limit:
             messages = messages[:limit]
 
-        top_posts = sorted(messages, key=lambda msg: sum(reaction.count for reaction in msg.reactions), reverse=True)[:show]
+        include_set = ReactionProcessor.parse_emoji_input(include) if include else None
+        exclude_set = ReactionProcessor.parse_emoji_input(exclude) if exclude else None
+        only_set = ReactionProcessor.parse_emoji_input(only) if only else None
+
+        if has_media:
+            messages = [msg for msg in messages if msg.attachments or any(
+                e.type in ("image", "video", "gifv") or e.image or e.thumbnail or e.video
+                for e in msg.embeds
+            )]
+        if include_set:
+            messages = [msg for msg in messages if any(ReactionProcessor.get_emoji_name(r) in include_set for r in msg.reactions)]
+        if exclude_set:
+            messages = [msg for msg in messages if not any(ReactionProcessor.get_emoji_name(r) in exclude_set for r in msg.reactions)]
+
+        if scored:
+            score_fn = lambda msg: ReactionProcessor.calculate_score(msg, only_set)
+        elif only_set:
+            score_fn = lambda msg: sum(r.count for r in msg.reactions if ReactionProcessor.get_emoji_name(r) in only_set)
+        else:
+            score_fn = lambda msg: sum(r.count for r in msg.reactions)
+
+        scored_messages = [(msg, score_fn(msg)) for msg in messages]
+        if scored:
+            scored_messages = [(msg, score) for msg, score in scored_messages if score > 0]
+        top_posts = [msg for msg, _ in sorted(scored_messages, key=lambda x: x[1], reverse=True)[:show]]
         
         embeds, total_embed_length = [], 0
         for msg in top_posts[:MAX_EMBEDS_PER_MESSAGE - 1]:  # Reserve one spot for summary if needed
